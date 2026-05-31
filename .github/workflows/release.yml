@@ -1,17 +1,51 @@
-name: Release
+name: CI/CD
 
 on:
   push:
+    branches:
+      - master
+      - main
     tags:
-      - 'v*' # Trigger workflow on tags starting with 'v', e.g. v0.0.1
+      - 'v*' # Trigger build/release on version tags
+  pull_request:
+    branches:
+      - master
+      - main
 
 permissions:
   contents: write   # Required to create releases and upload assets
   packages: write   # Required to push images to GitHub Container Registry (GHCR)
 
 jobs:
+  test:
+    name: Run Unit & Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Cache Go Modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Run Tests
+        run: go test -v -race ./...
+
   build-and-release:
     name: Build Go Binary & Release
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -47,6 +81,8 @@ jobs:
 
   build-and-publish-docker:
     name: Build & Publish Docker Image to GHCR
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
